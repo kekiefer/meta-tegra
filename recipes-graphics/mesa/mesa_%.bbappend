@@ -2,14 +2,12 @@ FILESEXTRAPATHS_prepend := "${THISDIR}/${BPN}:"
 
 SRC_URI += "file://egl-gles2-nv-extensions.patch"
 
-DEPENDS += "tegra-mmapi-glheaders"
-
 PACKAGECONFIG[glvnd] = "--enable-libglvnd,--disable-libglvnd,libglvnd"
 
 PACKAGECONFIG_append_tegra186 = " glvnd"
 PACKAGECONFIG_append_tegra194 = " glvnd"
 PACKAGECONFIG_append_tegra210 = " glvnd"
-DEPENDS_append_tegra = " tegra-libraries"
+DEPENDS_append_tegra = " tegra-mmapi-glheaders tegra-libraries"
 EXTRA_OECONF_append_tegra = " --without-dri-drivers --disable-dri3"
 
 python () {
