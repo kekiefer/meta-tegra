@@ -1,6 +1,6 @@
 FILESEXTRAPATHS_prepend := "${THISDIR}/${BPN}:"
 
-SRC_URI += "file://egl-gles2-nv-extensions.patch"
+SRC_URI_append_tegra = " file://egl-gles2-nv-extensions.patch"
 
 PACKAGECONFIG[glvnd] = "--enable-libglvnd,--disable-libglvnd,libglvnd"
 
