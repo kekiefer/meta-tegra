@@ -1,1 +1,1 @@
-RRECOMMENDS:${PN}:tegra = "kernel-module-nvidia-drm nvidia-drm-loadconf"
+RRECOMMENDS:${PN}:tegra234 = "kernel-module-nvidia-drm nvidia-drm-loadconf"

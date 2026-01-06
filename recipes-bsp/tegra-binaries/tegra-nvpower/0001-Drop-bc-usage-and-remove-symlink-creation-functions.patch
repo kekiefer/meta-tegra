@@ -1,21 +1,23 @@
-From 20a945128145290a457c507e24ee0a15422fea36 Mon Sep 17 00:00:00 2001
-From: Ilies CHERGUI <ichergui@nvidia.com>
-Date: Mon, 20 Jan 2025 10:36:25 +0000
+From 5a54920d28ff1b9c26ae4131b2fd0dda5ada9625 Mon Sep 17 00:00:00 2001
+From: Daniel Chaves <dchvs11@gmail.com>
+Date: Fri, 2 May 2025 23:34:26 +0000
 Subject: [PATCH] Drop bc usage and remove symlink creation functions
-
-Upstream-Status: Pending
 
 Signed-off-by: Matt Madison <matt@madison.systems>
 Signed-off-by: Ilies CHERGUI <ichergui@nvidia.com>
+Signed-off-by: Daniel Chaves <dchvs11@gmail.com>
+
+Upstream-Status: Pending
+
 ---
- etc/systemd/nvpower.sh | 178 ++---------------------------------------
- 1 file changed, 7 insertions(+), 171 deletions(-)
+ etc/systemd/nvpower.sh | 154 -----------------------------------------
+ 1 file changed, 154 deletions(-)
 
 diff --git a/etc/systemd/nvpower.sh b/etc/systemd/nvpower.sh
-index df9afc7..8afcfaf 100755
+index 07ff45c..c74208b 100755
 --- a/etc/systemd/nvpower.sh
 +++ b/etc/systemd/nvpower.sh
-@@ -182,171 +182,6 @@ function is_nvpm_relinking_needed()
+@@ -164,158 +164,6 @@ function is_nvpm_relinking_needed()
  	return 1
  }
  
@@ -79,13 +81,10 @@ index df9afc7..8afcfaf 100755
 -			elif [ "${machine}" = "p3701-0000-as-p3701-0004" ] || \
 -				[ "${machine}" = "p3701-0004" ]; then
 -				conf_file="/etc/nvpmodel/nvpmodel_p3701_0004.conf"
--			elif [ "${machine}" = "p3701-0008-safety" ]; then
--				conf_file="/etc/nvpmodel/nvpmodel_igx_orin_safety.conf"
 -			elif [ "${machine}" = "p3701-0008" ]; then
 -				conf_file="/etc/nvpmodel/nvpmodel_p3701_0008.conf"
--				if [ "${cvb}" = "p3740-0002-c01" ] || \
--					[ "${cvb}" = "p3971" ]; then
--					conf_file="/etc/nvpmodel/nvpmodel_igx_orin.conf"
+-				if [ "${cvb}" = "p3740-0002-c01" ]; then
+-					conf_file="/etc/nvpmodel/nvpmodel_p3701_0008_3740_0002.conf"
 -				fi
 -			elif [ "${machine}" = "p3767-0000" ] || \
 -				[ "${machine}" = "p3767-0002" ]; then
@@ -113,10 +112,6 @@ index df9afc7..8afcfaf 100755
 -				conf_file="/etc/nvpmodel/nvpmodel_p3767_0004_super.conf"
 -			else
 -				conf_file="/etc/nvpmodel/nvpmodel_p3701_0000.conf"
--			fi
--		elif [ "${SOCFAMILY}" = "tegra239" ]; then
--			if [ "${machine}" = "e2423" ]; then
--				conf_file="/etc/nvpmodel/nvpmodel_e2423.conf"
 -			fi
 -		fi
 -
@@ -148,7 +143,7 @@ index df9afc7..8afcfaf 100755
 -			if [[ "${machine}" =~ "p3701" ]]; then
 -				# Use p3701_0000 as default fan settings for p3701 series
 -				conf_file="/etc/nvpower/nvfancontrol/nvfancontrol_p3701_0000.conf"
--				if [[ "${machine}" =~ "p3701-0008" ]]; then
+-				if [ "${machine}" = "p3701-0008" ]; then
 -					conf_file="/etc/nvpower/nvfancontrol/nvfancontrol_p3701_0008.conf"
 -				fi
 -			elif [[ "${machine}" =~ "p3767" ]]; then
@@ -168,12 +163,6 @@ index df9afc7..8afcfaf 100755
 -			fi
 -		fi
 -
--		if [ "${SOCFAMILY}" = "tegra239" ]; then
--			if [ "${machine}" = "e2423" ]; then
--				conf_file="/etc/nvpower/nvfancontrol/nvfancontrol_e2423.conf"
--			fi
--		fi
--
 -		if [ "${conf_file}" != "" ]; then
 -			if [ -e "${conf_file}" ]; then
 -				ln -sf "${conf_file}" /etc/nvfancontrol.conf
@@ -187,37 +176,15 @@ index df9afc7..8afcfaf 100755
  # CPU hotplug helper function that turns on/off the CPU cores in the specified range
  # * Parameters:
  # * ${1}: desired online status (0 for offline, 1 for online)
-@@ -686,10 +521,12 @@ function setup_actmon()
- 	debugfs_actmon="/sys/kernel/debug/tegra-host1x/actmon"
+@@ -680,8 +528,6 @@ SOCFAMILY=""
  
- 	# Actmon settings should be the same across engines
--	tee ${debugfs_actmon}/*/sample_period 1>/dev/null <<< 1500
--	tee ${debugfs_actmon}/*/module0/consec_upper_num 1>/dev/null <<< 7
--	tee ${debugfs_actmon}/*/module0/consec_lower_num 1>/dev/null <<< 7
--	tee ${debugfs_actmon}/*/module0/k 1>/dev/null <<< 2
-+	for engine in ${debugfs_actmon}/*; do
-+	    echo 1500 > $engine/sample_period
-+	    echo 7 > $engine/module0/consec_upper_num
-+	    echo 7 > $engine/module0/consec_lower_num
-+	    echo 2 > $engine/module0/k
-+	done
- }
- 
- SOCFAMILY=""
-@@ -697,8 +534,6 @@ SOCFAMILY=""
  set_socfamily
- set_safety_flag
  set_power_state_perm
 -create_nvpmodel_symlink
 -create_nvfancontrol_symlink
  cpu_hotplug
- set_cpufreq_governor
+ set_cpu_governor
  set_cpu_floor_freq
-@@ -707,3 +542,4 @@ lock_se_frequency
- validate_nvpmodel_conf
- setup_hwmon
- setup_actmon
-+exit 0
 -- 
-2.34.1
+2.47.1
 

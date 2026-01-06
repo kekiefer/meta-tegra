@@ -16,6 +16,11 @@ def tegra_default_rootfs_size(d):
 def tegra_rootfs_device(d):
     import re
     bootdev = d.getVar('TNSPEC_BOOTDEV')
+    # For Xavier NX booting from SDcard, the RCM booted kernel
+    # bypasses UEFI and doesn't get any overlays applied, such
+    # as the one that renames mmcblk1 -> mmcblk0
+    if d.getVar('NVIDIA_CHIP') == "0x19" and bootdev.startswith("mmc") and d.getVar('TEGRA_SPIFLASH_BOOT') == "1":
+        return "mmcblk1"
     if bootdev.startswith("mmc") or bootdev.startswith("nvme"):
         return re.sub(r"p[0-9]+$", "", bootdev)
     return re.sub("[0-9]+$", "", bootdev)
@@ -97,7 +102,10 @@ IMAGE_TEGRAFLASH_DATA ??= ""
 
 IMAGE_TEGRAFLASH_INITRD_FLASHER ?= "${@'${DEPLOY_DIR_IMAGE}/${TEGRAFLASH_INITRD_FLASH_IMAGE}-${MACHINE}.cboot' if d.getVar('TEGRAFLASH_INITRD_FLASH_IMAGE') != '' else ''}"
 
+TEGRA_SPIFLASH_BOOT ??= ""
+
 TOSIMGFILENAME = "tos-optee.img"
+TOSIMGFILENAME:tegra194 = "tos-optee_t194.img"
 TOSIMGFILENAME:tegra234 = "tos-optee_t234.img"
 
 BUP_PAYLOAD_DIR = "payloads_t${@d.getVar('NVIDIA_CHIP')[2:]}x"
@@ -298,7 +306,12 @@ tegraflash_populate_package() {
     sed -e "\$a\BOOTCONTROL_OVERLAYS=\"$bcoverlays\"" ${STAGING_DATADIR}/tegraflash/flashvars > ./flashvars
     rm -rf ./rollback
     mkdir ./rollback
-    if [ "${SOC_FAMILY}" = "tegra234" ]; then
+    if [ "${SOC_FAMILY}" = "tegra194" ]; then
+        cp mb1_t194_prod.bin mb1_b_t194_prod.bin
+        cp -R ${STAGING_DATADIR}/nv_tegra/rollback/t19x ./rollback/
+        cp ${STAGING_DATADIR}/tegraflash/tegra19[4x]-*.cfg .
+        cp ${STAGING_DATADIR}/tegraflash/tegra194-*-bpmp-*.dtb .
+    elif [ "${SOC_FAMILY}" = "tegra234" ]; then
         cp ${STAGING_DATADIR}/tegraflash/bpmp_t234-*.bin .
         cp ${STAGING_DATADIR}/tegraflash/tegra234-*.dts* .
         cp ${STAGING_DATADIR}/tegraflash/fuse_t234.xml .
@@ -320,6 +333,9 @@ tegraflash_populate_package() {
         fi
         sed -i -e 's,^function ,,' ./l4t_bup_gen.func
         tegraflash_generate_bupgen_script
+    fi
+    if [ -e ${STAGING_DATADIR}/tegraflash/odmfuse_pkc_${MACHINE}.xml ]; then
+        cp ${STAGING_DATADIR}/tegraflash/odmfuse_pkc_${MACHINE}.xml ./odmfuse_pkc.xml
     fi
 }
 
@@ -373,8 +389,16 @@ LNXFILE="${LNXFILE}"
 ROOTFS_IMAGE="${IMAGE_BASENAME}.${IMAGE_TEGRAFLASH_FS_TYPE}"
 DATAFILE="${DATAFILE}"
 EXTERNAL_ROOTFS_DRIVE=${TEGRAFLASH_ROOTFS_EXTERNAL}
+BOOT_PARTITIONS_ON_EMMC=${BOOT_PARTITIONS_ON_EMMC}
 NO_INTERNAL_STORAGE=${TEGRAFLASH_NO_INTERNAL_STORAGE}
 END
+    fi
+    if [ -e ./odmfuse_pkc.xml ]; then
+        cat > burnfuses.sh <<END
+#!/bin/sh
+MACHINE=${TNSPEC_MACHINE} ./tegra-flash-helper.sh -c "burnfuses odmfuse_pkc.xml" --no-flash $DATAARGS flash.xml.in ${DTBFILE} ${EMMC_BCTS} ${ODMDATA} ${LNXFILE} ${IMAGE_BASENAME}.${IMAGE_TEGRAFLASH_FS_TYPE} "\$@"
+END
+        chmod +x burnfuses.sh
     fi
     if [ "$has_sdcard" = "yes" ]; then
         rm -f dosdcard.sh
@@ -389,6 +413,8 @@ END
         cat > doexternal.sh <<END
 #!/bin/sh
 MACHINE=${TNSPEC_MACHINE} BOARDID=\${BOARDID:-${TEGRA_BOARDID}} FAB=\${FAB:-${TEGRA_FAB}} CHIPREV=\${CHIPREV:-${TEGRA_CHIPREV}} BOARDSKU=\${BOARDSKU:-${TEGRA_BOARDSKU}} ./tegra-flash-helper.sh --sdcard -B ${TEGRA_BLBLOCKSIZE} -b ${IMAGE_BASENAME} $DATAARGS --external-device external-flash.xml.in ${DTBFILE} ${EMMC_BCTS} ${ODMDATA} ${LNXFILE} ${IMAGE_BASENAME}.${IMAGE_TEGRAFLASH_FS_TYPE} "\$@"
+#./nvflashxmlparse --split=flash-sdcard.xml.in --change-device-type=sdcard --output=flash-mmc.xml.in --sdcard-size=${TEGRAFLASH_SDCARD_SIZE} flash.xml.in
+#MACHINE=${TNSPEC_MACHINE} BOARDID=\${BOARDID:-${TEGRA_BOARDID}} FAB=\${FAB:-${TEGRA_FAB}} CHIPREV=\${CHIPREV:-${TEGRA_CHIPREV}} BOARDSKU=\${BOARDSKU:-${TEGRA_BOARDSKU}} BOARDREV=\${BOARDREV:-${TEGRA_BOARDREV}} ./tegra-flash-helper.sh --sdcard -B ${TEGRA_BLBLOCKSIZE} -s ${TEGRAFLASH_SDCARD_SIZE} -b ${IMAGE_BASENAME} $DATAARGS flash-sdcard.xml.in ${DTBFILE} ${EMMC_BCTS} ${ODMDATA} ${LNXFILE} ${IMAGE_BASENAME}.${IMAGE_TEGRAFLASH_FS_TYPE} "\$@"
 END
         chmod +x doexternal.sh
     fi
@@ -434,7 +460,7 @@ EOF
             buptype_arg=""
         fi
         cat <<EOF >> $outfile
-MACHINE=${TNSPEC_MACHINE} FAB="$fab" BOARDSKU="$boardsku" BOARDREV="$boardrev" CHIP_SKU="$chipsku" ./tegra-flash-helper.sh --sign --bup $buptype_arg ./flash-stripped.xml.in ${DTBFILE} ${EMMC_BCTS} ${ODMDATA} "\$@"
+MACHINE=${TNSPEC_MACHINE} FAB="$fab" BOARDSKU="$boardsku" BOARDREV="$boardrev" CHIP_SKU="$chipsku" ./tegra-flash-helper.sh --bup $buptype_arg ./flash-stripped.xml.in ${DTBFILE} ${EMMC_BCTS} ${ODMDATA} "\$@"
 EOF
     done
     chmod +x $outfile
@@ -445,7 +471,7 @@ TEGRAFLASH_PKG_DEPENDS = "${@'zip-native:do_populate_sysroot' if d.getVar('TEGRA
 do_image_tegraflash[depends] += "${TEGRAFLASH_PKG_DEPENDS} dtc-native:do_populate_sysroot coreutils-native:do_populate_sysroot \
                                  tegra-flashtools-native:do_populate_sysroot gptfdisk-native:do_populate_sysroot \
                                  tegra-bootfiles:do_populate_sysroot tegra-bootfiles:do_populate_lic \
-                                 virtual/kernel:do_deploy \
+                                 tegra-redundant-boot-rollback:do_populate_sysroot virtual/kernel:do_deploy \
                                  ${@'${INITRD_IMAGE}:do_image_complete' if d.getVar('INITRD_IMAGE') != '' else  ''} \
                                  ${@'${TEGRA_ESP_IMAGE}:do_image_complete' if d.getVar('TEGRA_ESP_IMAGE') != '' else  ''} \
                                  virtual/bootloader:do_deploy edk2-firmware-tegra-minimal:do_deploy virtual/secure-os:do_deploy ${TEGRA_SIGNING_EXTRA_DEPS} ${DTB_EXTRA_DEPS} \

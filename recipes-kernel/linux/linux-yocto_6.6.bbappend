@@ -18,6 +18,7 @@ SRC_URI:append:tegra = " \
     file://tegra-pcie.cfg \
     file://tegra-scsi-ufs.cfg \
     file://tegra-sound.cfg \
+    file://tegra-spi-nor.cfg \
     file://tegra-usb.cfg \
     file://tegra-v4l2.cfg \
     file://tegra-virtualization.cfg \

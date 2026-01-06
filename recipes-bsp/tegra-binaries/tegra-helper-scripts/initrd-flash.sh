@@ -96,6 +96,13 @@ while true; do
     esac
 done
 
+# When the secureboot package is not installed, we have
+# to handle signing/RCM booting a bit differently, due to
+# the way the NVIDIA flashing scripts work
+have_odmsign_func=0
+if [ -e "$here/odmsign.func" ]; then
+    have_odmsign_func=1
+fi
 if [ -n "$PRESIGNED" ]; then
     if [ -n "$keyfile" -o -n "$sbk_keyfile" ]; then
 	echo "WARN: binaries already signed; ignoring signing options" >&2
@@ -202,7 +209,18 @@ sign_binaries() {
 }
 
 prepare_for_rcm_boot() {
-    :
+    if [ $have_odmsign_func -eq 1 ]; then
+	local dtbfile_for_rcmboot=kernel_$DTBFILE
+	if [ "$CHIPID" = "0x19" ]; then
+	    cp kernel_$DTBFILE rcm_kernel_$DTBFILE
+	    dtbfile_for_rcmboot=rcm_kernel_$DTBFILE
+	fi
+	"$here/rewrite-tegraflash-args" -o rcm-boot.sh --bins kernel=initrd-flash.img,kernel_dtb=$dtbfile_for_rcmboot --cmd rcmboot --add="--securedev" flash_signed.sh || return 1
+	if [ "$CHIPID" = "0x23" ]; then
+	    sed -i -e's,mb2_t234_with_mb2_bct_MB2,mb2_t234_with_mb2_cold_boot_bct_MB2,' -e's, uefi_jetson, rcmboot_uefi_jetson,' rcm-boot.sh || return 1
+	fi
+	chmod +x rcm-boot.sh
+    fi
 }
 
 run_rcm_boot() {
